@@ -1,38 +1,24 @@
-// import ChatOpenAI from "./ChatOpenAI";
-// import MCPClient from "./MCPClient";
-// import Agent from "./agent";
-// import path from "path";
-
-// const currentDir = process.cwd();
-// const outputFile = path.join(currentDir, "news.md");
-// const fetchMcp = new MCPClient("fetch", "uvx", ["mcp-server-fetch"]);
-// const fileMcp = new MCPClient("file", "npx", ["-y", "@modelcontextprotocol/server-filesystem", currentDir]);
-
-// async function main() {
-//     const agent = new Agent('gpt-4o-mini', [fetchMcp, fileMcp], "You are a helpful AI agent.", "");
-//     await agent.init();
-//     const response = await agent.invoke(`爬取 https://news.ycombinator.com/ 的内容并总结后保存到 ${outputFile}`);
-//     console.log(response);
-// }
-
-// main().catch(console.error);
 import ChatOpenAI from "./ChatOpenAI";
 import MCPClient from "./MCPClient";
 import Agent from "./Agent";
 import path from "path";
 import fs from "fs";
+import EmbeddingRetrievers from "./embeddingRetrievers";
+import { logTitle } from "./util";
 
 const currentDir = process.cwd();
 const knowledgeDir = path.join(currentDir, "knowledge");
 
-// Ensure the target folder exists
+// Ensure the knowledge directory exists
 if (!fs.existsSync(knowledgeDir)) {
     fs.mkdirSync(knowledgeDir);
 }
 
+// MCP clients
 const fetchMcp = new MCPClient("fetch", "uvx", ["mcp-server-fetch"]);
 const fileMcp = new MCPClient("file", "npx", ["-y", "@modelcontextprotocol/server-filesystem", currentDir]);
 
+// System prompt for GPT agent
 const systemPrompt = `
 You are an AI assistant with access to two tools:
 1. "fetch" - retrieves online webpage or API content by URL.
@@ -51,45 +37,34 @@ Never call "list_allowed_directories" unless explicitly asked.
 Stop after saving the file successfully.
 `;
 
-
-// Main execution
 async function main() {
-    const agent = new Agent("gpt-4o-mini", [fetchMcp, fileMcp], systemPrompt, "");
+    const prompt = `根据bret的信息，创作一个她的故事，并且把她的故事保存到${currentDir}/Bret.md，要包含她的基本信息和故事。`;
+
+    const context = await retrieveContext(prompt);
+
+    const agent = new Agent("gpt-4o-mini", [fetchMcp, fileMcp], systemPrompt, context);
     await agent.init();
 
-    const response = await agent.invoke(`
-        使用 fetch 工具获取 https://jsonplaceholder.typicode.com/users 的完整 JSON 数据。
-        
-        然后根据每个用户的信息，在 ${knowledgeDir} 中为每个用户生成一个 Markdown 文件 (.md)，
-        文件名使用 “用户名_姓氏” 格式（空格用下划线替代）。
-        
-        每个文件的内容格式如下：
-        
-        # {name}
-        
-        **ID**: {id}  
-        **Username**: {username}  
-        **Email**: {email}  
-        **Address**:  
-        - Street: {address.street}  
-        - Suite: {address.suite}  
-        - City: {address.city}  
-        - Zipcode: {address.zipcode}  
-        - Geo:  
-          - Latitude: {address.geo.lat}  
-          - Longitude: {address.geo.lng}  
-        **Phone**: {phone}  
-        **Website**: {website}  
-        **Company**:  
-        - Name: {company.name}  
-        - Catch Phrase: {company.catchPhrase}  
-        - BS: {company.bs}
-        
-        请严格保持以上 Markdown 格式，并将每个文件写入指定目录。
-        `);
+    const response = await agent.invoke(prompt);
+    console.log(response);
 
+    await agent.close();
+}
 
-    console.log("\nFinal Response:\n", response);
+async function retrieveContext(prompt: string): Promise<string> {
+    const embeddingRetrievers = new EmbeddingRetrievers("BAAI/bge-m3");
+    const files = fs.readdirSync(knowledgeDir);
+
+    for (const file of files) {
+        const content = fs.readFileSync(path.join(knowledgeDir, file), "utf-8");
+        await embeddingRetrievers.embedDocument(content);
+    }
+
+    const contextItems = await embeddingRetrievers.retrieve(prompt);
+    logTitle("CONTEXT");
+    console.log(contextItems);
+
+    return contextItems.map(item => item.document).join("\n\n");
 }
 
 main().catch(console.error);
