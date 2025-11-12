@@ -38,7 +38,7 @@ Stop after saving the file successfully.
 `;
 
 async function main() {
-    const prompt = `根据bret的信息，创作一个她的故事，并且把她的故事保存到${currentDir}/Bret.md，要包含她的基本信息和故事。`;
+    const prompt = `Based on Bret's information, create a story about her and save it to ${currentDir}/Bret.md. The story should include her basic information and narrative.`;
 
     const context = await retrieveContext(prompt);
 

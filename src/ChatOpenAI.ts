@@ -64,7 +64,7 @@ export default class ChatOpenAI {
         const toolCalls: ToolCall[] = [];
         if (message.tool_calls && message.tool_calls.length > 0) {
             for (const call of message.tool_calls) {
-                if (call.function) {
+                if ('function' in call && call.function) {
                     toolCalls.push({
                         id: call.id || "",
                         function: {
