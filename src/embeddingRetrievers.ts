@@ -1,4 +1,4 @@
-import VectorStore from "./VectorStore";
+import VectorStore from "./VectorStore.js";
 
 // 定义嵌入 API 返回结构
 interface EmbeddingAPIResponse {

@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import "dotenv/config";
-import { logTitle } from "./util";
+import { logTitle } from "./util.js";
 
 // Structure for tool call objects
 export interface ToolCall {

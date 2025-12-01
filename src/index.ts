@@ -1,70 +1,98 @@
-import ChatOpenAI from "./ChatOpenAI";
-import MCPClient from "./MCPClient";
-import Agent from "./Agent";
 import path from "path";
 import fs from "fs";
-import EmbeddingRetrievers from "./embeddingRetrievers";
-import { logTitle } from "./util";
+import MCPClient from "./MCPClient.js";
+import Agent from "./Agent.js";
+import EmbeddingRetrievers from "./embeddingRetrievers.js";
+import { logTitle } from "./util.js";
+import "dotenv/config";
 
+
+// ====== CONFIG ======
 const currentDir = process.cwd();
 const knowledgeDir = path.join(currentDir, "knowledge");
 
-// Ensure the knowledge directory exists
+// Ensure knowledge directory exists
 if (!fs.existsSync(knowledgeDir)) {
     fs.mkdirSync(knowledgeDir);
 }
 
-// MCP clients
-const fetchMcp = new MCPClient("fetch", "uvx", ["mcp-server-fetch"]);
-const fileMcp = new MCPClient("file", "npx", ["-y", "@modelcontextprotocol/server-filesystem", currentDir]);
+// ====== MCP CLIENTS ======
 
-// System prompt for GPT agent
+// 1. Real-time stock tool (MCP server: node mcp-stock-server.js)
+const stockMcpClient = new MCPClient(
+    "stock-server",
+    "node",
+    ["mcp-stock-server.js"]
+);
+
+// 2. Fetch tool
+const fetchMcp = new MCPClient(
+    "fetch",
+    "uvx",
+    ["mcp-server-fetch"]
+);
+
+// 3. File system tool
+const fileMcp = new MCPClient(
+    "file",
+    "npx",
+    ["-y", "@modelcontextprotocol/server-filesystem", currentDir]
+);
+
+// ====== SYSTEM PROMPT ======
 const systemPrompt = `
-You are an AI assistant with access to two tools:
-1. "fetch" - retrieves online webpage or API content by URL.
-   - It may return JSON data wrapped in a text field.
-   - When the returned content type is JSON, parse it as an array or object.
-2. "file" - reads and writes files to disk.
-   - It accepts { "path": string, "content": string }.
+You are an AI assistant with multiple tools:
+1. "get_stock_quote" — real-time stock data from Finnhub.
+2. "fetch" — fetch online JSON or text from a URL.
+3. "file" — read/write file content to disk.
 
-When the user asks to get online JSON content (like from an API),
-- Use the "fetch" tool only once to get the full response.
-- Parse the JSON content.
-- Then use the "file" tool to write the markdown text to the target path.
-
-Never call "fetch" repeatedly unless a download fails.
-Never call "list_allowed_directories" unless explicitly asked.
-Stop after saving the file successfully.
+General RULES:
+- Always respond in English only.
+- Never use Chinese or any other language unless the user explicitly asks.
+- Keep responses clear, concise, and accurate.
+- When tools return data, summarize it in English.
+- When RAG context contains other languages, ignore the language and respond in English only.
 `;
 
-async function main() {
-    const prompt = `Based on Bret's information, create a story about her and save it to ${currentDir}/Bret.md. The story should include her basic information and narrative.`;
-
-    const context = await retrieveContext(prompt);
-
-    const agent = new Agent("gpt-4o-mini", [fetchMcp, fileMcp], systemPrompt, context);
-    await agent.init();
-
-    const response = await agent.invoke(prompt);
-    console.log(response);
-
-    await agent.close();
-}
-
+// ====== RETRIEVAL ======
 async function retrieveContext(prompt: string): Promise<string> {
     const embeddingRetrievers = new EmbeddingRetrievers("BAAI/bge-m3");
-    const files = fs.readdirSync(knowledgeDir);
 
+    const files = fs.readdirSync(knowledgeDir);
     for (const file of files) {
         const content = fs.readFileSync(path.join(knowledgeDir, file), "utf-8");
         await embeddingRetrievers.embedDocument(content);
     }
 
     const contextItems = await embeddingRetrievers.retrieve(prompt);
-    logTitle("CONTEXT");
+
+    logTitle("CONTEXT (RAG Retrieved)");
     console.log(contextItems);
 
-    return contextItems.map(item => item.document).join("\n\n");
+    return contextItems.map(i => i.document).join("\n\n");
+}
+
+// ====== MAIN ======
+async function main() {
+
+    // Example prompt 1: 股票查询
+    const prompt1 = "please search Tesla stock market price and give me a summary.";
+
+    // Build context (可选)
+    const context1 = await retrieveContext(prompt1);
+
+    const agent1 = new Agent(
+        "gpt-4.1-mini",
+        [stockMcpClient],         // Only stock tool for this agent
+        systemPrompt,
+        context1
+    );
+
+    await agent1.init();
+    const result1 = await agent1.invoke(prompt1);
+
+    console.log("=== result ===");
+    console.log(result1);
 }
 
 main().catch(console.error);
