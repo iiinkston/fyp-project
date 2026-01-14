@@ -1,7 +1,6 @@
 import VectorStore from "./VectorStore.js";
 
-// 定义嵌入 API 返回结构
-interface EmbeddingAPIResponse {
+interface OpenAIEmbeddingResponse {
     data: { embedding: number[] }[];
 }
 
@@ -14,25 +13,25 @@ export default class EmbeddingRetrievers {
         this.vectorStore = new VectorStore();
     }
 
-    // 将用户查询转为嵌入向量
     async embedQuery(query: string): Promise<number[]> {
         return await this.embed(query);
     }
 
-    // 嵌入文档，并存入向量数据库
     async embedDocument(document: string): Promise<number[]> {
         const embedding = await this.embed(document);
         this.vectorStore.addItem({ embedding, document });
         return embedding;
     }
 
-    // 嵌入文本，向 SiliconFlow 发送请求
-    private async embed(text: string): Promise<number[]> {
-        const baseUrl = process.env.EMBEDDING_BASE_URL;
-        const apiKey = process.env.EMBEDDING_KEY;
+    
 
-        if (!baseUrl) throw new Error("❌ EMBEDDING_BASE_URL is missing in .env");
-        if (!apiKey) throw new Error("❌ EMBEDDING_KEY is missing in .env");
+    // Embed text using OpenAI
+    private async embed(text: string): Promise<number[]> {
+        const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+        const apiKey = process.env.OPENAI_API_KEY;
+        
+
+        if (!apiKey) throw new Error("OPENAI_API_KEY is missing in .env");
 
         const response = await fetch(`${baseUrl}/embeddings`, {
             method: "POST",
@@ -41,21 +40,23 @@ export default class EmbeddingRetrievers {
                 "Authorization": `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: this.embeddingModel,
+                model: this.embeddingModel, // e.g. "text-embedding-3-small"
                 input: text,
             }),
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`❌ Failed to fetch embeddings: ${errorText}`);
+            throw new Error(`Failed to fetch embeddings: ${errorText}`);
         }
 
-        const data = (await response.json()) as EmbeddingAPIResponse;
+        const data = (await response.json()) as OpenAIEmbeddingResponse;
+        if (!data?.data?.[0]?.embedding) {
+            throw new Error("Embedding response missing data[0].embedding");
+        }
         return data.data[0].embedding;
     }
 
-    // 返回语义相似文档（topK 个）
     async retrieve(query: string, topK: number = 3) {
         const queryEmbedding = await this.embedQuery(query);
         return this.vectorStore.search(queryEmbedding, topK);

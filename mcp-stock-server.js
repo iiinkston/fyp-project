@@ -3,7 +3,7 @@ import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import fetch from "node-fetch";
-import { z } from "zod";   // 新增：使用 Zod v3
+import { z } from "zod";
 
 // 1. 创建 MCP 服务器
 const server = new McpServer({
@@ -17,10 +17,10 @@ server.registerTool(
     {
         title: "Get real-time stock quote",
         description: "Fetch real-time quote from Finnhub for a given stock symbol",
-        // 这里用“字段名: zod 类型”的写法，而不是 z.object / JSON Schema
-        inputSchema: {
+        // Use Zod schema; SDK will convert to JSON Schema for clients
+        inputSchema: z.object({
             symbol: z.string().describe("Ticker symbol, e.g. AAPL, TSLA, 700.HK"),
-        },
+        }),
     },
     // handler：真正调用 Finnhub
     async ({ symbol }) => {
