@@ -44,6 +44,9 @@ export default class MCPClient {
     public async callTool(name: string, params: Record<string, any>): Promise<ToolResponse> {
         try {
             const result = await this.mcp.callTool({ name, arguments: params });
+
+            // Return the raw MCP result as the output so downstream code
+            // always sees the standard { content, structuredContent } shape.
             return { success: true, output: result };
         } catch (err) {
             console.error(`Error calling tool "${name}":`, err);

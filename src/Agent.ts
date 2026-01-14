@@ -117,7 +117,25 @@ export default class Agent {
                         const elapsed = Date.now() - start;
 
                         console.log(`Result (${elapsed}ms): ${JSON.stringify(result).slice(0, 200)}...`);
-                        this.llm.appendToolResult(toolCall.id, JSON.stringify(result));
+
+                        // Only surface the MCP tool output (content/structuredContent), not the wrapper
+                        if (result && typeof result === "object" && "success" in result) {
+                            const r: any = result as any;
+                            if (r.success) {
+                                this.llm.appendToolResult(
+                                    toolCall.id,
+                                    JSON.stringify(r.output ?? {})
+                                );
+                            } else {
+                                this.llm.appendToolResult(
+                                    toolCall.id,
+                                    JSON.stringify({ error: r.error ?? "Tool call failed" })
+                                );
+                            }
+                        } else {
+                            // Fallback: append whatever came back
+                            this.llm.appendToolResult(toolCall.id, JSON.stringify(result));
+                        }
                     } else {
                         console.warn(`Tool not found: ${toolCall.function.name}`);
                         this.llm.appendToolResult(toolCall.id, "Tool not found");
